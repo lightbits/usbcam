@@ -1,3 +1,13 @@
+// v4l2 magic
+// Get the value of setting 'exposure_auto'
+//     v4l2-ctl -d /dev/video2 -C exposure_auto
+// See all controls
+//     v4l2-ctl -d /dev/video2 --list-ctrls-menus
+// Set exposure
+//     v4l2-ctl -d /dev/video2 -c exposure_auto=3
+// See formats
+//     v4l2-ctl --device=/dev/video1 --list-formats-ext
+
 // TEGRA X1/TEGRA LINUX DRIVER PACKAGE MULTIMEDIA USER GUIDE
 // http://developer2.download.nvidia.com/embedded/L4T/r24_Release_v2.0/Docs/L4T_Tegra_X1_Multimedia_User_Guide_Release_24.2.pdf?nas16vBtpEYXN9Q3_dgD9dZ8msoaqJ3ncR5CVNdqlEnlYt3bPqlKOsRcifhHB02kMNznaxDYRKdtBJg-0xXxHzCbysXTlTMoAwEaFIF3FfHzxlyVQatAbHz-3lkv9FndSDaC8fJUQuKIsAbbFAVRBxYHXbhPXas0BbJga--6wshwIuSTLJK3wFmGmZrgBgpZS9LL9wI
 
@@ -35,10 +45,9 @@ uint64_t get_nanoseconds()
     return result;
 }
 
-bool main_running = true;
 void ctrlc(int)
 {
-    main_running = false;
+    exit(EXIT_FAILURE);
 }
 
 void xioctl(int fh, int request, void *arg)
@@ -62,12 +71,14 @@ int main(int argc, char **argv)
 {
     signal(SIGINT, ctrlc);
 
-    const char *device_name = "/dev/video0";
+    const char *device_name = "/dev/video1";
     const int device_fps = 30;
-    const int device_buffers = 6;
-    const int device_width = 800;
-    const int device_height = 600;
+    const int device_buffers = 3;
+    const int device_width = 1920;
+    const int device_height = 1080;
     const int device_format = V4L2_PIX_FMT_MJPEG;
+
+    printf("opening %s\n", device_name);
 
     // Open the device
     int fd = v4l2_open(device_name, O_RDWR, 0);
@@ -212,16 +223,10 @@ int main(int argc, char **argv)
             FILE *f = fopen(filename, "w+");
             fwrite(jpg_data, jpg_size, 1, f);
             fclose(f);
-            usleep(110*1000);
+            // usleep(110*1000);
         }
 
         xioctl(fd, VIDIOC_QBUF, &buf);
-    }
-
-    // dequeue buffers
-    {
-        for (int i = 0; i < device_buffers; i++)
-            munmap(buffer_start[i], buffer_length[i]);
     }
 
     // turn off streaming
@@ -229,5 +234,11 @@ int main(int argc, char **argv)
         int type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         xioctl(fd, VIDIOC_STREAMOFF, &type);
         close(fd);
+    }
+
+    // dequeue buffers
+    {
+        for (int i = 0; i < device_buffers; i++)
+            munmap(buffer_start[i], buffer_length[i]);
     }
 }
