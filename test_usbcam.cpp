@@ -3,9 +3,7 @@
 #include "usbcam.h"
 #include <signal.h>
 #include <assert.h>
-
-#define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
+#include <turbojpeg.h>
 
 #ifndef USBCAM_OPT_DEVICE
 #define USBCAM_OPT_DEVICE "/dev/video0"
@@ -38,13 +36,54 @@ int main(int argc, char **argv)
 
     usbcam_init(opt);
 
-    for (int i = 0; i < 30; i++)
-    {
-        unsigned char *data;
-        unsigned int size;
-        usbcam_lock(&data, &size);
+    tjhandle decompressor = tjInitDecompress();
 
-        usbcam_unlock();
+    for (int i = 0; i < 120; i++)
+    {
+        const int Ix = USBCAM_OPT_WIDTH;
+        const int Iy = USBCAM_OPT_HEIGHT;
+        static unsigned char rgb[Ix*Iy*3];
+        {
+            unsigned char *jpg_data;
+            unsigned int jpg_size;
+            usbcam_lock(&jpg_data, &jpg_size);
+
+            int jpg_subsamples,width,height;
+            tjDecompressHeader2(decompressor,
+                jpg_data,
+                jpg_size,
+                &width,
+                &height,
+                &jpg_subsamples);
+
+            assert(width == Ix);
+            assert(height == Iy);
+
+            tjDecompress2(decompressor,
+                jpg_data,
+                jpg_size,
+                rgb,
+                width,
+                0,
+                height,
+                TJPF_RGB,
+                TJFLAG_FASTDCT);
+
+            #if 0 // WRITE MJPEG TO FILE
+            {
+                char filename[256];
+                sprintf(filename, "video%04d.jpg", i);
+                FILE *f = fopen(filename, "w+");
+                fwrite(jpg_data, jpg_size, 1, f);
+                fclose(f);
+            }
+            #endif
+
+            usbcam_unlock();
+            assert(rgb);
+
+            printf("%d\n", i);
+        }
     }
 
     usbcam_cleanup();

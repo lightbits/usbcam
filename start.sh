@@ -18,4 +18,4 @@ DEFINES="-DUSBCAM_OPT_DEVICE=\"$CAMERA\"
          -DUSBCAM_OPT_WIDTH=$WIDTH
          -DUSBCAM_OPT_HEIGHT=$HEIGHT
          -DUSBCAM_OPT_BUFFERS=$BUFFERS"
-g++ test_usbcam.cpp $DEFINES -o app -lv4l2 && ./app
+g++ test_usbcam.cpp $DEFINES -o app -lv4l2 -lturbojpeg && ./app
