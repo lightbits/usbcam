@@ -71,11 +71,11 @@ int main(int argc, char **argv)
 {
     signal(SIGINT, ctrlc);
 
-    const char *device_name = "/dev/video1";
+    const char *device_name = "/dev/video0";
     const int device_fps = 30;
     const int device_buffers = 3;
-    const int device_width = 1920;
-    const int device_height = 1080;
+    const int device_width = 800;
+    const int device_height = 600;
     const int device_format = V4L2_PIX_FMT_MJPEG;
 
     printf("opening %s\n", device_name);
