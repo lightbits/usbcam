@@ -1,11 +1,21 @@
 //
 // Interface
 //
+
+// #define USBCAM_NO_DEBUG before including this file if you want
+// to disable debug output.
+
 struct usbcam_opt_t
 {
-    // e.g. /dev/video0
-    const char *device_name;
+    const char *device_name; // e.g. /dev/video0
 
+    // The driver does not overwrite buffers with latest data:
+    // Therefore, you should request as many buffers as you expect
+    // processing time to take. For example, if you need 100 ms to
+    // process one frame and the camera gives one frame every 30 ms,
+    // then it will fill up three buffers while you process. If you
+    // requested less than three buffers you will not get the latest
+    // frame when you ask for the next frame!
     int buffers;
 
     // Pixel formats specified as codes of four characters, and
@@ -13,41 +23,45 @@ struct usbcam_opt_t
     // (http://lxr.free-electrons.com/source/include/uapi/linux/videodev2.h#L616)
     // You can find out what formats your camera supports with
     // $ v4l2-ctl -d /dev/video0 --list-formats-ext
-    unsigned int pixel_format;
+    unsigned int pixel_format; // e.g. V4L2_PIX_FMT_MJPEG
     unsigned int width;
     unsigned int height;
 };
+
+void usbcam_cleanup();
 void usbcam_init(usbcam_opt_t opt);
-void usbcam_dequeue(unsigned char **data, // points to a data chunk currently locked by you
-                    unsigned int *size);  // number of bytes in data
-void usbcam_requeue(); // Call this when you finish processing the dequeued data
+void usbcam_lock(unsigned char **data, unsigned int *size);
+void usbcam_unlock();
 
 //
 // Implementation
 //
-#include <time.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <fcntl.h>
-#include <errno.h>
-#include <sys/ioctl.h>
-#include <sys/types.h>
-#include <sys/time.h>
-#include <sys/mman.h>
+// #include <sys/ioctl.h>
+// #include <sys/types.h>
+// #include <sys/time.h>
+#include <stdio.h>      // printf
+#include <stdlib.h>     // exit, EXIT_FAILURE
+#include <string.h>     // strerror
+#include <fcntl.h>      // O_RDWR
+#include <errno.h>      // errno
+#include <sys/mman.h>   // mmap, munmap
 #include <linux/videodev2.h>
 #include <libv4l2.h>
-#include <turbojpeg.h>
-#include <assert.h>
-#include <signal.h>
-#define usbcam_assert(CONDITION, MESSAGE) { if (!(CONDITION)) { printf("[usbcam.h] Error at line %d: %s\n", __LINE__, MESSAGE); exit(EXIT_FAILURE); } }
-#define usbcam_max_buffers 128
-static int usbcam_has_mmap = 0;
-static int usbcam_has_dqbuf = 0;
-static int usbcam_has_fd = 0;
-static int usbcam_has_stream = 0;
 
+#define usbcam_max_buffers 128
+#define usbcam_assert(CONDITION, MESSAGE) { if (!(CONDITION)) { printf("[usbcam.h] Error at line %d: %s\n", __LINE__, MESSAGE); exit(EXIT_FAILURE); } }
+#ifndef USBCAM_NO_DEBUG
+#define usbcam_debug(...) { printf("[usbcam.h] "); printf(__VA_ARGS__); }
+#else
+#define usbcam_debug(...) { }
+#endif
+
+static int          usbcam_has_mmap = 0;
+static int          usbcam_has_dqbuf = 0;
+static int          usbcam_has_fd = 0;
+static int          usbcam_has_stream = 0;
 static int          usbcam_fd = 0;
+static int          usbcam_buffers = 0;
 static void        *usbcam_buffer_start[usbcam_max_buffers] = {0};
 static unsigned int usbcam_buffer_length[usbcam_max_buffers] = {0};
 static v4l2_buffer  usbcam_dqbuf = {0};
@@ -72,14 +86,16 @@ void usbcam_cleanup()
     // return any buffers we have dequeued (not sure if this is necessary)
     if (usbcam_has_dqbuf)
     {
-        usbcam_ioctl(VIDIOC_QBUF, &buf);
+        usbcam_debug("Requeuing buffer\n");
+        usbcam_ioctl(VIDIOC_QBUF, &usbcam_dqbuf);
         usbcam_has_dqbuf = 0;
     }
 
     // free buffers
     if (usbcam_has_mmap)
     {
-        for (int i = 0; i < device_buffers; i++)
+        usbcam_debug("Deallocating mmap\n");
+        for (int i = 0; i < usbcam_buffers; i++)
             munmap(usbcam_buffer_start[i], usbcam_buffer_length[i]);
         usbcam_has_mmap = 0;
     }
@@ -87,6 +103,7 @@ void usbcam_cleanup()
     // turn off streaming
     if (usbcam_has_stream)
     {
+        usbcam_debug("Turning off stream (if this freezes send me a message)\n");
         int type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         usbcam_ioctl(VIDIOC_STREAMOFF, &type);
         usbcam_has_stream = 0;
@@ -94,6 +111,7 @@ void usbcam_cleanup()
 
     if (usbcam_has_fd)
     {
+        usbcam_debug("Closing fd\n");
         close(usbcam_fd);
         usbcam_has_fd = 0;
     }
@@ -103,13 +121,12 @@ void usbcam_init(usbcam_opt_t opt)
 {
     usbcam_cleanup();
     usbcam_assert(opt.buffers <= usbcam_max_buffers, "You requested too many buffers");
+    usbcam_assert(opt.buffers > 0, "You need atleast one buffer");
 
     // Open the device
     usbcam_fd = v4l2_open(opt.device_name, O_RDWR, 0);
     usbcam_assert(usbcam_fd >= 0, "Failed to open device");
     usbcam_has_fd = 1;
-
-    atexit(usbcam_atexit);
 
     // set format
     {
@@ -124,6 +141,8 @@ void usbcam_init(usbcam_opt_t opt)
         usbcam_assert(fmt.fmt.pix.width == opt.width, "Did not get the requested width");
         usbcam_assert(fmt.fmt.pix.height == opt.height, "Did not get the requested height");
     }
+
+    usbcam_debug("Opened device (%s %dx%d)\n", opt.device_name, opt.width, opt.height);
 
     // tell the driver how many buffers we want
     {
@@ -151,13 +170,14 @@ void usbcam_init(usbcam_opt_t opt)
             info.length,
             PROT_READ | PROT_WRITE,
             MAP_SHARED,
-            fd,
+            usbcam_fd,
             info.m.offset
         );
 
-        usbcam_assert(buffer_start[i] != MAP_FAILED, "Failed to allocate memory for buffers");
+        usbcam_assert(usbcam_buffer_start[i] != MAP_FAILED, "Failed to allocate memory for buffers");
     }
 
+    usbcam_buffers = opt.buffers;
     usbcam_has_mmap = 1;
 
     // start streaming
@@ -179,26 +199,21 @@ void usbcam_init(usbcam_opt_t opt)
     }
 }
 
-int usbcam_requeue()
+void usbcam_unlock()
 {
     if (usbcam_has_dqbuf)
     {
         usbcam_ioctl(VIDIOC_QBUF, &usbcam_dqbuf);
         usbcam_has_dqbuf = 0;
-        return 1;
     }
-    return 0;
 }
 
-void usbcam_dequeue(unsigned char **data, unsigned int *size)
+void usbcam_lock(unsigned char **data, unsigned int *size)
 {
-    if (usbcam_requeue())
-    {
-        printf("[usbcam.h] Warning at line %d\n", __LINE__);
-        // You are not requeuing the buffer manually.
-        // You should requeue the buffer manually by calling usbcam_requeue
-        // once you are done processing the dequeued buffer.
-    }
+    usbcam_assert(!usbcam_has_dqbuf, "You forgot to unlock the previous frame");
+    usbcam_assert(usbcam_has_fd, "Camera device not open");
+    usbcam_assert(usbcam_has_mmap, "Buffers not allocated");
+    usbcam_assert(usbcam_has_stream, "Stream not begun");
 
     // dequeue all the buffers and select the one with latest data
     v4l2_buffer buf = {0};
@@ -214,11 +229,11 @@ void usbcam_dequeue(unsigned char **data, unsigned int *size)
         {
             fd_set fds;
             FD_ZERO(&fds);
-            FD_SET(fd, &fds);
+            FD_SET(usbcam_fd, &fds);
             timeval tv; // if both fields = 0, select returns immediately
             tv.tv_sec = 0;
             tv.tv_usec = 0;
-            r = select(fd + 1, &fds, NULL, NULL, &tv); // todo: what if r == -1?
+            r = select(usbcam_fd + 1, &fds, NULL, NULL, &tv); // todo: what if r == -1?
             if (r == 1)
             {
                 // queue the previous buffer
