@@ -7,7 +7,7 @@
 // My laptop's webcamera outputs MJPEG frames, and if I try to open them in Linux
 // I get Huffman table 0x00 was not defined, or something. Running xxd on the jpeg
 // I see the header is ... AVI1, which is a mjpeg alright.
-// /home/youmu/Downloads/ffmpeg/ffmpeg -i video%04d.jpg -vcodec mjpeg -f image2 video%04d.jpg
+// ffmpeg -i video%04d.jpg -vcodec mjpeg -f image2 video%04d.jpg
 
 #include <time.h>
 #include <stdio.h>
@@ -51,10 +51,12 @@ void xioctl(int fh, int request, void *arg)
 
     if (r == -1)
     {
-        printf("USB request failed %d, %s\n", errno, strerror(errno));
+        printf("[usbcam.h] USB request failed (%d): %s\n", errno, strerror(errno));
         exit(EXIT_FAILURE);
     }
 }
+
+#define usbcam_assert(CONDITION, MESSAGE) { if (!(CONDITION)) { printf("[usbcam.h] Error at line %d: %s\n", __LINE__, MESSAGE); exit(EXIT_FAILURE); } }
 
 int main(int argc, char **argv)
 {
@@ -65,27 +67,24 @@ int main(int argc, char **argv)
     const int device_buffers = 6;
     const int device_width = 800;
     const int device_height = 600;
+    const int device_format = V4L2_PIX_FMT_MJPEG;
 
     // Open the device
     int fd = v4l2_open(device_name, O_RDWR, 0);
-    if (fd < 0)
-    {
-        printf("Failed to open device\n");
-        exit(EXIT_FAILURE);
-    }
+    usbcam_assert(fd >= 0, "Failed to open device");
 
     // set format
     {
         v4l2_format fmt = {0};
         fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-        fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_MJPEG;
+        fmt.fmt.pix.pixelformat = device_format;
         fmt.fmt.pix.width = device_width;
         fmt.fmt.pix.height = device_height;
         xioctl(fd, VIDIOC_S_FMT, &fmt);
 
-        assert(fmt.fmt.pix.pixelformat == V4L2_PIX_FMT_MJPEG);
-        assert(fmt.fmt.pix.width = fmt.fmt.pix.width);
-        assert(fmt.fmt.pix.height = fmt.fmt.pix.height);
+        usbcam_assert(fmt.fmt.pix.pixelformat == device_format, "Did not get the requested format");
+        usbcam_assert(fmt.fmt.pix.width == device_width, "Did not get the requested width");
+        usbcam_assert(fmt.fmt.pix.height == device_height, "Did not get the requested height");
     }
 
     // tell the driver how many buffers we want
@@ -96,7 +95,7 @@ int main(int argc, char **argv)
         request.count = device_buffers;
         xioctl(fd, VIDIOC_REQBUFS, &request);
 
-        assert(request.count == device_buffers);
+        usbcam_assert(request.count == device_buffers, "Did not get the requested number of buffers");
     }
 
     // allocate buffer
@@ -120,7 +119,7 @@ int main(int argc, char **argv)
             info.m.offset
         );
 
-        assert(buffer_start[i] != MAP_FAILED); // mmap failed
+        usbcam_assert(buffer_start[i] != MAP_FAILED, "Failed to allocate memory for buffers");
     }
 
     // start streaming
@@ -149,7 +148,6 @@ int main(int argc, char **argv)
         {
             // get a buffer
             xioctl(fd, VIDIOC_DQBUF, &buf);
-            printf("got a buffer\n");
 
             // check if there are more buffers available
             int r = 1;
@@ -164,7 +162,7 @@ int main(int argc, char **argv)
                 r = select(fd + 1, &fds, NULL, NULL, &tv); // todo: what if r == -1?
                 if (r == 1)
                 {
-                    printf("r == 1\n");
+                    printf(".");
 
                     // queue the previous buffer
                     xioctl(fd, VIDIOC_QBUF, &buf);
