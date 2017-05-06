@@ -179,10 +179,10 @@ int main(int argc, char **argv)
                     printf("%6.2f ms\t", (t-last_t)/1e6);
                     last_t = t;
                 }
-
-                printf("\n");
             }
             #endif
+
+            printf("\n");
         }
     }
 
