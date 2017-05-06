@@ -3,11 +3,11 @@
    WIDTH=800
   HEIGHT=600
  BUFFERS=3
-EXPOSURE=300
+EXPOSURE=100
 
 # manual exposure
 echo "Setting camera to manual exposure"
-v4l2-ctl -d $CAMERA -c exposure_auto=3
+v4l2-ctl -d $CAMERA -c exposure_auto=1
 
 # set exposure time
 echo "Setting exposure time to $EXPOSURE"
