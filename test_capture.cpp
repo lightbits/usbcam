@@ -71,7 +71,6 @@ int main(int argc, char **argv)
     signal(SIGINT, ctrlc);
 
     const char *device_name = "/dev/video0";
-    const int device_fps = 30;
     const int device_buffers = 3;
     const int device_width = 800;
     const int device_height = 600;
