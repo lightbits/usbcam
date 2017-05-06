@@ -76,7 +76,7 @@ int decompress_jpg(int expected_width,
         if (mode == decompress_jpg_rgb)
         {
             format = TJPF_RGB;
-            flags = TJFLAG_FASTDCT|TJFLAG_FASTUPSAMPLE;
+            flags = TJFLAG_FASTDCT;
         }
 
         if (mode == decompress_jpg_gray)
