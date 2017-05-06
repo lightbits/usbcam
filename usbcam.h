@@ -1,8 +1,63 @@
-// Get the video 4 linux 2 development libraries (v4l2)
+// usbcam.h
+// github.com/lightbits
+//
+// Changelog
+// (3) JPEG-RGB decompressor returns true/false instead of crashing
+// (2) Added turbojpeg JPEG->RGB decompression
+// (1) Beginning of time
+//
+// See §BUILDING for build instructions
+
+#include <sys/time.h>
+struct usbcam_opt_t
+{
+    const char *device_name;
+    int buffers; // See §BUFFERS
+    unsigned int pixel_format; // See §PIXELFORMATS
+    unsigned int width;
+    unsigned int height;
+};
+
+void usbcam_cleanup();
+void usbcam_init(usbcam_opt_t opt);
+void usbcam_lock(unsigned char **data, unsigned int *size, timeval *timestamp);
+void usbcam_unlock();
+// See §DECOMPRESSION
+bool usbcam_jpeg_to_rgb(int desired_width, int desired_height, unsigned char *rgb, unsigned char *jpg_data, unsigned int jpg_size);
+
+//
+// USER MANUAL
+//
+// §BUFFERS
+// The driver does not overwrite buffers with latest data:
+// Therefore, you should request as many buffers as you expect
+// processing time to take. For example, if you need 100 ms to
+// process one frame and the camera gives one frame every 30 ms,
+// then it will fill up three buffers while you process. If you
+// requested less than three buffers you will not get the latest
+// frame when you ask for the next frame!
+//
+// §PIXELFORMATS
+// A common format is V4L2_PIX_FMT_MJPEG.
+// Pixel formats are specified as codes of four characters.
+// A list of formats can be found in videodev2.h.
+//   http://lxr.free-electrons.com/source/include/uapi/linux/videodev2.h#L616
+// You can find out what formats your camera supports with
+//   v4l2-ctl -d /dev/video0 --list-formats-ext
+//
+// §DECOMPRESSION
+// You can specify a desired resolution which does not need to
+// match the resolution given in usbcam_init. This will make
+// turbojpeg use its internal downscaling capabilities while
+// also reducing decompression time. If you specfy the same
+// resolution no downscaling happens.
+// http://www.libjpeg-turbo.org/Documentation/Documentation
+//
+// §BUILDING
+// STEP 1) Get the video 4 linux 2 development libraries (v4l2)
 //   $ sudo apt-get install libv4l-dev
 //   $ sudo apt-get install v4l-utils
-//
-// Get the turbojpeg library:
+// STEP 2) Get the turbojpeg library
 //   (See https://github.com/libjpeg-turbo/libjpeg-turbo/blob/master/BUILDING.md)
 //   $ git clone https://github.com/libjpeg-turbo/libjpeg-turbo
 //   $ cd libjpeg-turbo
@@ -12,41 +67,8 @@
 //   $ sh ../configure
 //   $ make
 //   $ make install prefix=/usr/local libdir=/usr/local/lib64
-//
-// Get the turbojpeg documentation
-//   http://www.libjpeg-turbo.org/Documentation/Documentation
-//
-// Compiler flags
+// STEP 3) Compiler flags
 //   g++ ... -lv4l2 -lturbojpeg
-
-#include <sys/time.h>
-struct usbcam_opt_t
-{
-    const char *device_name; // e.g. /dev/video0
-
-    // The driver does not overwrite buffers with latest data:
-    // Therefore, you should request as many buffers as you expect
-    // processing time to take. For example, if you need 100 ms to
-    // process one frame and the camera gives one frame every 30 ms,
-    // then it will fill up three buffers while you process. If you
-    // requested less than three buffers you will not get the latest
-    // frame when you ask for the next frame!
-    int buffers;
-
-    // Pixel formats specified as codes of four characters, and
-    // a predefined list of formats can be found in videodev2.h
-    // (http://lxr.free-electrons.com/source/include/uapi/linux/videodev2.h#L616)
-    // You can find out what formats your camera supports with
-    // $ v4l2-ctl -d /dev/video0 --list-formats-ext
-    unsigned int pixel_format; // e.g. V4L2_PIX_FMT_MJPEG
-    unsigned int width;
-    unsigned int height;
-};
-
-void usbcam_cleanup();
-void usbcam_init(usbcam_opt_t opt);
-void usbcam_lock(unsigned char **data, unsigned int *size, timeval *timestamp);
-void usbcam_unlock();
 
 //
 // Implementation
@@ -63,6 +85,7 @@ void usbcam_unlock();
 #include <sys/mman.h>   // mmap, munmap
 #include <linux/videodev2.h>
 #include <libv4l2.h>
+#include <turbojpeg.h>
 
 #define usbcam_max_buffers 128
 #define usbcam_assert(CONDITION, MESSAGE) { if (!(CONDITION)) { printf("[usbcam.h] Error at line %d: %s\n", __LINE__, MESSAGE); exit(EXIT_FAILURE); } }
@@ -267,4 +290,52 @@ void usbcam_lock(unsigned char **data, unsigned int *size, timeval *timestamp)
 
     usbcam_dqbuf = buf;
     usbcam_has_dqbuf = 1;
+}
+
+bool usbcam_jpeg_to_rgb(int desired_width, int desired_height, unsigned char *destination, unsigned char *jpg_data, unsigned int jpg_size)
+{
+    static tjhandle decompressor = tjInitDecompress();
+    int subsamp,width,height,error;
+
+    error = tjDecompressHeader2(decompressor,
+        jpg_data,
+        jpg_size,
+        &width,
+        &height,
+        &subsamp);
+
+    if (error)
+    {
+        usbcam_debug("Error decoding JPEG: %s\n", tjGetErrorStr());
+        return false;
+    }
+
+    if (width != desired_width || height != desired_height)
+    {
+        static bool first = true;
+        if (first)
+        {
+            usbcam_debug("Resolution (%dx%d) did not match desired resolution (%dx%d)\n",
+                   width, height, desired_width, desired_height);
+            first = false;
+        }
+    }
+
+    error = tjDecompress2(decompressor,
+        jpg_data,
+        jpg_size,
+        destination,
+        desired_width,
+        0,
+        desired_height,
+        TJPF_RGB,
+        TJFLAG_FASTDCT);
+
+    if (error)
+    {
+        usbcam_debug("Error decoding JPEG: %s\n", tjGetErrorStr());
+        return false;
+    }
+
+    return true;
 }
