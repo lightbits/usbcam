@@ -22,40 +22,28 @@ exposure=45     # (min=1    max=5000 step=1 default=157)
 
 # echo "Turning off exposure auto priority"
 #     v4l2-ctl -d $device -c exposure_auto_priority=0
-#     sleep 0.1
 echo "Setting exposure to manual"
     v4l2-ctl -d $device -c exposure_auto=1
-    sleep 0.1
 echo "Setting exposure time to $exposure"
     v4l2-ctl -d $device -c exposure_absolute=$exposure
-    sleep 0.1
-echo "Setting sharpness to $sharpness"
-    v4l2-ctl -d $device -c sharpness=$sharpness
-    sleep 0.1
-echo "Setting brightness to $brightness"
-    v4l2-ctl -d $device -c brightness=$brightness
-    sleep 0.1
-echo "Setting contrast to $contrast"
-    v4l2-ctl -d $device -c contrast=$contrast
-    sleep 0.1
-echo "Setting saturation to $saturation"
-    v4l2-ctl -d $device -c saturation=$saturation
-    sleep 0.1
-echo "Setting hue to $hue"
-    v4l2-ctl -d $device -c hue=$hue
-    sleep 0.1
-echo "Setting gamma to $gamma"
-    v4l2-ctl -d $device -c gamma=$gamma
-    sleep 0.1
-echo "Setting gain to $gain"
-    v4l2-ctl -d $device -c gain=$gain
-    sleep 0.1
-echo "Setting power line frequency to $powerline"
-    v4l2-ctl -d $device -c power_line_frequency=$powerline
-    sleep 0.1
-echo "Setting automatic white balance to $whitebalance"
-    v4l2-ctl -d $device -c white_balance_temperature_auto=$whitebalance
-    sleep 0.1
+# echo "Setting sharpness to $sharpness"
+#     v4l2-ctl -d $device -c sharpness=$sharpness
+# echo "Setting brightness to $brightness"
+#     v4l2-ctl -d $device -c brightness=$brightness
+# echo "Setting contrast to $contrast"
+#     v4l2-ctl -d $device -c contrast=$contrast
+# echo "Setting saturation to $saturation"
+#     v4l2-ctl -d $device -c saturation=$saturation
+# echo "Setting hue to $hue"
+#     v4l2-ctl -d $device -c hue=$hue
+# echo "Setting gamma to $gamma"
+#     v4l2-ctl -d $device -c gamma=$gamma
+# echo "Setting gain to $gain"
+#     v4l2-ctl -d $device -c gain=$gain
+# echo "Setting power line frequency to $powerline"
+#     v4l2-ctl -d $device -c power_line_frequency=$powerline
+# echo "Setting automatic white balance to $whitebalance"
+#     v4l2-ctl -d $device -c white_balance_temperature_auto=$whitebalance
 
 #
 # compile and run
