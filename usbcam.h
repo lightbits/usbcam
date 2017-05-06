@@ -45,7 +45,7 @@ struct usbcam_opt_t
 
 void usbcam_cleanup();
 void usbcam_init(usbcam_opt_t opt);
-void usbcam_lock(unsigned char **data, unsigned int *size, timeval *timestamp=0);
+void usbcam_lock(unsigned char **data, unsigned int *size, timeval *timestamp);
 void usbcam_unlock();
 
 //
