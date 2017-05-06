@@ -2,6 +2,7 @@
 // github.com/lightbits
 //
 // Changelog
+// (5) Automatically unlock previous frame on usbcam_lock if user forgot (and warn)
 // (4) Buffer count is unsigned
 // (3) JPEG-RGB decompressor returns true/false instead of crashing
 // (2) Added turbojpeg JPEG->RGB decompression
@@ -78,33 +79,34 @@ bool usbcam_jpeg_to_rgb(int desired_width, int desired_height, unsigned char *rg
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/time.h>
-#include <stdio.h>      // printf
-#include <stdlib.h>     // exit, EXIT_FAILURE
-#include <string.h>     // strerror
-#include <fcntl.h>      // O_RDWR
-#include <errno.h>      // errno
-#include <sys/mman.h>   // mmap, munmap
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <sys/mman.h>
 #include <linux/videodev2.h>
 #include <libv4l2.h>
 #include <turbojpeg.h>
 
 #define usbcam_max_buffers 128
-#define usbcam_assert(CONDITION, MESSAGE) { if (!(CONDITION)) { printf("[usbcam.h] Error at line %d: %s\n", __LINE__, MESSAGE); exit(EXIT_FAILURE); } }
+#define usbcam_assert(CONDITION, ...) { if (!(CONDITION)) { printf("[usbcam.h line %d] ", __LINE__); printf(__VA_ARGS__); printf("\n"); exit(EXIT_FAILURE); } }
+#define usbcam_warn(...) { printf("[usbcam.h line %d] ", __LINE__); printf(__VA_ARGS__); printf("\n"); }
 #ifdef USBCAM_DEBUG
-#define usbcam_debug(...) { printf("[usbcam.h] "); printf(__VA_ARGS__); }
+#define usbcam_debug(...) { printf("[usbcam.h line %d] ", __LINE__); printf(__VA_ARGS__); printf("\n"); }
 #else
 #define usbcam_debug(...) { }
 #endif
 
 static int          usbcam_has_mmap = 0;
-static int          usbcam_has_dqbuf = 0;
+static int          usbcam_has_lock = 0;
 static int          usbcam_has_fd = 0;
 static int          usbcam_has_stream = 0;
 static int          usbcam_fd = 0;
 static int          usbcam_buffers = 0;
 static void        *usbcam_buffer_start[usbcam_max_buffers] = {0};
 static unsigned int usbcam_buffer_length[usbcam_max_buffers] = {0};
-static v4l2_buffer  usbcam_dqbuf = {0};
+static v4l2_buffer  usbcam_lock_buf = {0};
 
 void usbcam_ioctl(int request, void *arg)
 {
@@ -124,17 +126,17 @@ void usbcam_ioctl(int request, void *arg)
 void usbcam_cleanup()
 {
     // return any buffers we have dequeued (not sure if this is necessary)
-    if (usbcam_has_dqbuf)
+    if (usbcam_has_lock)
     {
-        usbcam_debug("Requeuing buffer\n");
-        usbcam_ioctl(VIDIOC_QBUF, &usbcam_dqbuf);
-        usbcam_has_dqbuf = 0;
+        usbcam_debug("Requeuing buffer");
+        usbcam_ioctl(VIDIOC_QBUF, &usbcam_lock_buf);
+        usbcam_has_lock = 0;
     }
 
     // free buffers
     if (usbcam_has_mmap)
     {
-        usbcam_debug("Deallocating mmap\n");
+        usbcam_debug("Deallocating mmap");
         for (int i = 0; i < usbcam_buffers; i++)
             munmap(usbcam_buffer_start[i], usbcam_buffer_length[i]);
         usbcam_has_mmap = 0;
@@ -143,7 +145,7 @@ void usbcam_cleanup()
     // turn off streaming
     if (usbcam_has_stream)
     {
-        usbcam_debug("Turning off stream (if this freezes send me a message)\n");
+        usbcam_debug("Turning off stream (if this freezes send me a message)");
         int type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         usbcam_ioctl(VIDIOC_STREAMOFF, &type);
         usbcam_has_stream = 0;
@@ -151,7 +153,7 @@ void usbcam_cleanup()
 
     if (usbcam_has_fd)
     {
-        usbcam_debug("Closing fd\n");
+        usbcam_debug("Closing fd");
         close(usbcam_fd);
         usbcam_has_fd = 0;
     }
@@ -182,7 +184,7 @@ void usbcam_init(usbcam_opt_t opt)
         usbcam_assert(fmt.fmt.pix.height == opt.height, "Did not get the requested height");
     }
 
-    usbcam_debug("Opened device (%s %dx%d)\n", opt.device_name, opt.width, opt.height);
+    usbcam_debug("Opened device (%s %dx%d)", opt.device_name, opt.width, opt.height);
 
     // tell the driver how many buffers we want
     {
@@ -241,19 +243,29 @@ void usbcam_init(usbcam_opt_t opt)
 
 void usbcam_unlock()
 {
-    if (usbcam_has_dqbuf)
+    if (usbcam_has_lock)
     {
-        usbcam_ioctl(VIDIOC_QBUF, &usbcam_dqbuf);
-        usbcam_has_dqbuf = 0;
+        usbcam_ioctl(VIDIOC_QBUF, &usbcam_lock_buf);
+        usbcam_has_lock = 0;
+    }
+    else
+    {
+        usbcam_warn("You already unlocked the frame");
     }
 }
 
 void usbcam_lock(unsigned char **data, unsigned int *size, timeval *timestamp)
 {
-    usbcam_assert(!usbcam_has_dqbuf, "You forgot to unlock the previous frame");
     usbcam_assert(usbcam_has_fd, "Camera device not open");
     usbcam_assert(usbcam_has_mmap, "Buffers not allocated");
     usbcam_assert(usbcam_has_stream, "Stream not begun");
+
+    if (usbcam_has_lock)
+    {
+        // you should unlock frames as soon as you are done processing them for best performance
+        usbcam_warn("You did not unlock the previous frame");
+        usbcam_unlock();
+    }
 
     // dequeue all the buffers and select the one with latest data
     v4l2_buffer buf = {0};
@@ -289,8 +301,8 @@ void usbcam_lock(unsigned char **data, unsigned int *size, timeval *timestamp)
     *data = (unsigned char*)usbcam_buffer_start[buf.index];
     *size = buf.bytesused;
 
-    usbcam_dqbuf = buf;
-    usbcam_has_dqbuf = 1;
+    usbcam_lock_buf = buf;
+    usbcam_has_lock = 1;
 }
 
 bool usbcam_jpeg_to_rgb(int desired_width, int desired_height, unsigned char *destination, unsigned char *jpg_data, unsigned int jpg_size)
@@ -307,19 +319,8 @@ bool usbcam_jpeg_to_rgb(int desired_width, int desired_height, unsigned char *de
 
     if (error)
     {
-        usbcam_debug("Error decoding JPEG: %s\n", tjGetErrorStr());
+        usbcam_warn("Failed to decode JPEG: %s", tjGetErrorStr());
         return false;
-    }
-
-    if (width != desired_width || height != desired_height)
-    {
-        static bool first = true;
-        if (first)
-        {
-            usbcam_debug("Resolution (%dx%d) did not match desired resolution (%dx%d)\n",
-                   width, height, desired_width, desired_height);
-            first = false;
-        }
     }
 
     error = tjDecompress2(decompressor,
@@ -334,7 +335,7 @@ bool usbcam_jpeg_to_rgb(int desired_width, int desired_height, unsigned char *de
 
     if (error)
     {
-        usbcam_debug("Error decoding JPEG: %s\n", tjGetErrorStr());
+        usbcam_warn("Failed to decode JPEG: %s", tjGetErrorStr());
         return false;
     }
 

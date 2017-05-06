@@ -2,7 +2,7 @@
 //   g++ test_usbcam.cpp -o app -lv4l2 -lturbojpeg && ./app
 
 #define NUM_FRAMES       0
-#define DECOMPRESS_JPG   0
+#define DECOMPRESS_JPG   1
 #define STREAM_VIDEO     0
 #define PRINT_TIMESTAMPS 1
 #define WRITE_TO_FILE    0
@@ -19,6 +19,8 @@
 #ifndef USBCAM_OPT_BUFFERS
 #define USBCAM_OPT_BUFFERS 3
 #endif
+
+#define USBCAM_DEBUG
 
 #include "vdb_release.h"
 #include "usbcam.h"
@@ -73,12 +75,13 @@ int main(int argc, char **argv)
             #if DECOMPRESS_JPG==1
             {
                 uint64_t t1 = get_nanoseconds();
-                int ok = decompress_jpg(Ix, Iy, rgb, jpg_data, jpg_size, decompress_jpg_rgb);
-                uint64_t t2 = get_nanoseconds();
-                if (ok)
+                if (!usbcam_jpeg_to_rgb(Ix, Iy, rgb, jpg_data, jpg_size))
                 {
-                    printf("Decompressed in %6.2f ms\t", (t2-t1)/1e6);
+                    usbcam_unlock();
+                    continue;
                 }
+                uint64_t t2 = get_nanoseconds();
+                printf("Decompressed in %6.2f ms\t", (t2-t1)/1e6);
             }
             #endif
 
