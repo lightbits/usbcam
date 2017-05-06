@@ -31,7 +31,6 @@
 #include <sys/mman.h>
 #include <linux/videodev2.h>
 #include <libv4l2.h>
-#include <turbojpeg.h>
 #include <assert.h>
 #include <signal.h>
 
