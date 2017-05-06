@@ -1,11 +1,25 @@
+// Get the video 4 linux 2 development libraries (v4l2)
+//   $ sudo apt-get install libv4l-dev
+//   $ sudo apt-get install v4l-utils
 //
-// Interface
+// Get the turbojpeg library:
+//   (See https://github.com/libjpeg-turbo/libjpeg-turbo/blob/master/BUILDING.md)
+//   $ git clone https://github.com/libjpeg-turbo/libjpeg-turbo
+//   $ cd libjpeg-turbo
+//   $ autoreconf -fiv
+//   $ mkdir build
+//   $ cd build
+//   $ sh ../configure
+//   $ make
+//   $ make install prefix=/usr/local libdir=/usr/local/lib64
 //
-// #define USBCAM_NO_DEBUG before including this file if you want
-// to disable debug output.
+// Get the turbojpeg documentation
+//   http://www.libjpeg-turbo.org/Documentation/Documentation
+//
+// Compiler flags
+//   g++ ... -lv4l2 -lturbojpeg
 
-#include <sys/time.h> // timeval
-
+#include <sys/time.h>
 struct usbcam_opt_t
 {
     const char *device_name; // e.g. /dev/video0
@@ -37,6 +51,7 @@ void usbcam_unlock();
 //
 // Implementation
 //
+
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <sys/time.h>
@@ -51,7 +66,7 @@ void usbcam_unlock();
 
 #define usbcam_max_buffers 128
 #define usbcam_assert(CONDITION, MESSAGE) { if (!(CONDITION)) { printf("[usbcam.h] Error at line %d: %s\n", __LINE__, MESSAGE); exit(EXIT_FAILURE); } }
-#ifndef USBCAM_NO_DEBUG
+#ifdef USBCAM_DEBUG
 #define usbcam_debug(...) { printf("[usbcam.h] "); printf(__VA_ARGS__); }
 #else
 #define usbcam_debug(...) { }
