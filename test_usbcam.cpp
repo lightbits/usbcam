@@ -1,26 +1,33 @@
 // compiling
 //   g++ test_usbcam.cpp -o app -lv4l2 -lturbojpeg && ./app
 
+#ifndef NUM_FRAMES
 #define NUM_FRAMES       0
+#endif
+#ifndef DECOMPRESS_JPG
 #define DECOMPRESS_JPG   1
+#endif
+#ifndef STREAM_VIDEO
 #define STREAM_VIDEO     0
+#endif
+#ifndef PRINT_TIMESTAMPS
 #define PRINT_TIMESTAMPS 1
+#endif
+#ifndef WRITE_TO_FILE
 #define WRITE_TO_FILE    0
-
-#ifndef USBCAM_OPT_DEVICE
-#define USBCAM_OPT_DEVICE "/dev/video0"
 #endif
-#ifndef USBCAM_OPT_WIDTH
-#define USBCAM_OPT_WIDTH 800
+#ifndef CAMERA_NAME
+#define CAMERA_NAME      "/dev/video0"
 #endif
-#ifndef USBCAM_OPT_HEIGHT
-#define USBCAM_OPT_HEIGHT 600
+#ifndef CAMERA_WIDTH
+#define CAMERA_WIDTH     800
 #endif
-#ifndef USBCAM_OPT_BUFFERS
-#define USBCAM_OPT_BUFFERS 3
+#ifndef CAMERA_HEIGHT
+#define CAMERA_HEIGHT    600
 #endif
-
-#define USBCAM_DEBUG
+#ifndef CAMERA_BUFFERS
+#define CAMERA_BUFFERS   3
+#endif
 
 #include "vdb_release.h"
 #include "usbcam.h"
@@ -47,11 +54,11 @@ int main(int argc, char **argv)
     signal(SIGINT, ctrlc);
 
     usbcam_opt_t opt = {0};
-    opt.device_name = USBCAM_OPT_DEVICE;
+    opt.device_name = CAMERA_NAME;
     opt.pixel_format = V4L2_PIX_FMT_MJPEG;
-    opt.width = USBCAM_OPT_WIDTH;
-    opt.height = USBCAM_OPT_HEIGHT;
-    opt.buffers = USBCAM_OPT_BUFFERS;
+    opt.width = CAMERA_WIDTH;
+    opt.height = CAMERA_HEIGHT;
+    opt.buffers = CAMERA_BUFFERS;
 
     usbcam_init(opt);
 
@@ -61,8 +68,8 @@ int main(int argc, char **argv)
     for (int i = 0; i < NUM_FRAMES; i++)
     #endif
     {
-        const int Ix = USBCAM_OPT_WIDTH;
-        const int Iy = USBCAM_OPT_HEIGHT;
+        const int Ix = CAMERA_WIDTH;
+        const int Iy = CAMERA_HEIGHT;
         static unsigned char rgb[Ix*Iy*3];
         {
             unsigned char *jpg_data;
