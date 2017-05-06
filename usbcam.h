@@ -2,6 +2,7 @@
 // github.com/lightbits
 //
 // Changelog
+// (4) Buffer count is unsigned
 // (3) JPEG-RGB decompressor returns true/false instead of crashing
 // (2) Added turbojpeg JPEG->RGB decompression
 // (1) Beginning of time
@@ -12,7 +13,7 @@
 struct usbcam_opt_t
 {
     const char *device_name;
-    int buffers; // See §BUFFERS
+    unsigned int buffers; // See §BUFFERS
     unsigned int pixel_format; // See §PIXELFORMATS
     unsigned int width;
     unsigned int height;

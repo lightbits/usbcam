@@ -7,17 +7,6 @@
 #define PRINT_TIMESTAMPS 1
 #define WRITE_TO_FILE    0
 
-#if STREAM_VIDEO==1
-#include "vdb_release.h"
-#endif
-
-#include "usbcam.h"
-#include <stdint.h>
-#include <time.h>
-#include <signal.h>
-#include <assert.h>
-#include <turbojpeg.h>
-
 #ifndef USBCAM_OPT_DEVICE
 #define USBCAM_OPT_DEVICE "/dev/video0"
 #endif
@@ -31,6 +20,12 @@
 #define USBCAM_OPT_BUFFERS 3
 #endif
 
+#include "vdb_release.h"
+#include "usbcam.h"
+#include <stdint.h>
+#include <time.h>
+#include <signal.h>
+
 uint64_t get_nanoseconds()
 {
     struct timespec ts = {};
@@ -43,76 +38,6 @@ uint64_t get_nanoseconds()
 void ctrlc(int)
 {
     exit(0);
-}
-
-enum decompress_jpg_mode
-{
-    decompress_jpg_rgb = 0,
-    decompress_jpg_gray = 1
-};
-
-int decompress_jpg(int expected_width,
-                   int expected_height,
-                   unsigned char *destination,
-                   unsigned char *jpg_data,
-                   unsigned int jpg_size,
-                   decompress_jpg_mode mode)
-{
-    static tjhandle decompressor = tjInitDecompress();
-    int subsamp,width,height,error;
-
-    error = tjDecompressHeader2(decompressor,
-        jpg_data,
-        jpg_size,
-        &width,
-        &height,
-        &subsamp);
-
-    if (error)
-    {
-        printf("[decompress_jpg] Error: %s\n", tjGetErrorStr());
-        return 0;
-    }
-
-    if (width != expected_width || height != expected_height)
-    {
-        printf("[decompress_jpg] Error: Resolution (%dx%d) did not match expected resolution (%dx%d)\n",
-               width, height, expected_width, expected_height);
-        return 0;
-    }
-
-    int format,flags;
-    {
-        if (mode == decompress_jpg_rgb)
-        {
-            format = TJPF_RGB;
-            flags = TJFLAG_FASTDCT;
-        }
-
-        if (mode == decompress_jpg_gray)
-        {
-            format = TJPF_GRAY;
-            flags = TJFLAG_FASTDCT|TJXOPT_GRAY;
-        }
-    }
-
-    error = tjDecompress2(decompressor,
-        jpg_data,
-        jpg_size,
-        destination,
-        width,
-        0,
-        height,
-        format,
-        flags);
-
-    if (error)
-    {
-        printf("[decompress_jpg] Error: %s\n", tjGetErrorStr());
-        return 0;
-    }
-
-    return 1;
 }
 
 int main(int argc, char **argv)
