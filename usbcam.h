@@ -1,9 +1,10 @@
 //
 // Interface
 //
-
 // #define USBCAM_NO_DEBUG before including this file if you want
 // to disable debug output.
+
+#include <sys/time.h> // timeval
 
 struct usbcam_opt_t
 {
@@ -30,15 +31,15 @@ struct usbcam_opt_t
 
 void usbcam_cleanup();
 void usbcam_init(usbcam_opt_t opt);
-void usbcam_lock(unsigned char **data, unsigned int *size);
+void usbcam_lock(unsigned char **data, unsigned int *size, timeval *timestamp=0);
 void usbcam_unlock();
 
 //
 // Implementation
 //
-// #include <sys/ioctl.h>
-// #include <sys/types.h>
-// #include <sys/time.h>
+#include <sys/ioctl.h>
+#include <sys/types.h>
+#include <sys/time.h>
 #include <stdio.h>      // printf
 #include <stdlib.h>     // exit, EXIT_FAILURE
 #include <string.h>     // strerror
@@ -208,7 +209,7 @@ void usbcam_unlock()
     }
 }
 
-void usbcam_lock(unsigned char **data, unsigned int *size)
+void usbcam_lock(unsigned char **data, unsigned int *size, timeval *timestamp)
 {
     usbcam_assert(!usbcam_has_dqbuf, "You forgot to unlock the previous frame");
     usbcam_assert(usbcam_has_fd, "Camera device not open");
@@ -245,6 +246,7 @@ void usbcam_lock(unsigned char **data, unsigned int *size)
         }
     }
 
+    *timestamp = buf.timestamp;
     *data = (unsigned char*)usbcam_buffer_start[buf.index];
     *size = buf.bytesused;
 
