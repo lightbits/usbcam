@@ -128,8 +128,6 @@ int main(int argc, char **argv)
 
     usbcam_init(opt);
 
-    tjhandle decompressor = tjInitDecompress();
-
     #if NUM_FRAMES==0
     for (int i = 0; ; i++)
     #else
