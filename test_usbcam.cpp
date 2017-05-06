@@ -1,6 +1,16 @@
 // compiling
 //   g++ test_usbcam.cpp -o app -lv4l2 -lturbojpeg && ./app
 
+#define NUM_FRAMES       0
+#define DECOMPRESS_JPG   0
+#define STREAM_VIDEO     0
+#define PRINT_TIMESTAMPS 1
+#define WRITE_TO_FILE    0
+
+#if STREAM_VIDEO==1
+#include "vdb_release.h"
+#endif
+
 #include "usbcam.h"
 #include <stdint.h>
 #include <time.h>
@@ -120,7 +130,11 @@ int main(int argc, char **argv)
 
     tjhandle decompressor = tjInitDecompress();
 
-    for (int i = 0; i < 120; i++)
+    #if NUM_FRAMES==0
+    for (int i = 0; ; i++)
+    #else
+    for (int i = 0; i < NUM_FRAMES; i++)
+    #endif
     {
         const int Ix = USBCAM_OPT_WIDTH;
         const int Iy = USBCAM_OPT_HEIGHT;
@@ -131,8 +145,9 @@ int main(int argc, char **argv)
             timeval timestamp;
             usbcam_lock(&jpg_data, &jpg_size, &timestamp);
 
-            // decompress mjpeg
-            #if 1
+            printf("%5d. ", i);
+
+            #if DECOMPRESS_JPG==1
             {
                 uint64_t t1 = get_nanoseconds();
                 int ok = decompress_jpg(Ix, Iy, rgb, jpg_data, jpg_size, decompress_jpg_rgb);
@@ -144,8 +159,21 @@ int main(int argc, char **argv)
             }
             #endif
 
-            // write mjpeg to file
-            #if 0
+            #if STREAM_VIDEO==1
+            {
+                static uint64_t last_t = get_nanoseconds();
+                uint64_t t = get_nanoseconds();
+                float dt = (t-last_t)/1e9;
+                if (dt > 1.0f && vdb_begin())
+                {
+                    vdb_imageRGB8(rgb, Ix, Iy);
+                    vdb_end();
+                    last_t = t;
+                }
+            }
+            #endif
+
+            #if WRITE_TO_FILE==1
             {
                 char filename[256];
                 sprintf(filename, "video%04d.jpg", i);
@@ -157,11 +185,8 @@ int main(int argc, char **argv)
 
             usbcam_unlock();
 
-            // print timestamps
-            #if 0
+            #if PRINT_TIMESTAMPS==1
             {
-                printf("%3d. ", i);
-
                 // compute frame interval from internal timestamp
                 {
                     uint64_t sec = (uint64_t)timestamp.tv_sec;
