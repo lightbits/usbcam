@@ -35,6 +35,76 @@ void ctrlc(int)
     exit(0);
 }
 
+enum decompress_jpg_mode
+{
+    decompress_jpg_rgb = 0,
+    decompress_jpg_gray = 1
+};
+
+int decompress_jpg(int expected_width,
+                   int expected_height,
+                   unsigned char *destination,
+                   unsigned char *jpg_data,
+                   unsigned int jpg_size,
+                   decompress_jpg_mode mode)
+{
+    static tjhandle decompressor = tjInitDecompress();
+    int subsamp,width,height,error;
+
+    error = tjDecompressHeader2(decompressor,
+        jpg_data,
+        jpg_size,
+        &width,
+        &height,
+        &subsamp);
+
+    if (error)
+    {
+        printf("[decompress_jpg] Error: %s\n", tjGetErrorStr());
+        return 0;
+    }
+
+    if (width != expected_width || height != expected_height)
+    {
+        printf("[decompress_jpg] Error: Resolution (%dx%d) did not match expected resolution (%dx%d)\n",
+               width, height, expected_width, expected_height);
+        return 0;
+    }
+
+    int format,flags;
+    {
+        if (mode == decompress_jpg_rgb)
+        {
+            format = TJPF_RGB;
+            flags = TJFLAG_FASTDCT|TJFLAG_FASTUPSAMPLE;
+        }
+
+        if (mode == decompress_jpg_gray)
+        {
+            format = TJPF_GRAY;
+            flags = TJFLAG_FASTDCT|TJXOPT_GRAY;
+        }
+    }
+
+    error = tjDecompress2(decompressor,
+        jpg_data,
+        jpg_size,
+        destination,
+        width,
+        0,
+        height,
+        format,
+        flags);
+
+    if (error)
+    {
+        printf("[decompress_jpg] Error: %s\n", tjGetErrorStr());
+        return 0;
+    }
+
+    return 1;
+}
+
 int main(int argc, char **argv)
 {
     signal(SIGINT, ctrlc);
@@ -61,48 +131,18 @@ int main(int argc, char **argv)
             timeval timestamp;
             usbcam_lock(&jpg_data, &jpg_size, &timestamp);
 
-            // decompress jpeg
+            // decompress mjpeg
             #if 1
             {
-                uint64_t last_t = get_nanoseconds();
-
-                int jpg_subsamples,width,height;
-                int ok = tjDecompressHeader2(decompressor,
-                    jpg_data,
-                    jpg_size,
-                    &width,
-                    &height,
-                    &jpg_subsamples);
-
-                if (!ok)
+                uint64_t t1 = get_nanoseconds();
+                int ok = decompress_jpg(Ix, Iy, rgb, jpg_data, jpg_size, decompress_jpg_rgb);
+                uint64_t t2 = get_nanoseconds();
+                if (ok)
                 {
-                    printf("Failed to decompress JPEG header: %s\n", tjGetErrorStr());
+                    printf("Decompressed in %6.2f ms\t", (t2-t1)/1e6);
                 }
-
-                assert(width == Ix);
-                assert(height == Iy);
-
-                ok = tjDecompress2(decompressor,
-                    jpg_data,
-                    jpg_size,
-                    rgb,
-                    width,
-                    0,
-                    height,
-                    TJPF_RGB,
-                    TJFLAG_FASTDCT);
-
-                if (!ok)
-                {
-                    printf("Failed to decompress JPEG: %s\n", tjGetErrorStr());
-                }
-
-                uint64_t t = get_nanoseconds();
-                printf("%6.2f\t", (t-last_t)/1e6);
             }
             #endif
-
-            usbcam_unlock();
 
             // write mjpeg to file
             #if 0
@@ -115,6 +155,10 @@ int main(int argc, char **argv)
             }
             #endif
 
+            usbcam_unlock();
+
+            // print timestamps
+            #if 0
             {
                 printf("%3d. ", i);
 
@@ -138,6 +182,7 @@ int main(int argc, char **argv)
 
                 printf("\n");
             }
+            #endif
         }
     }
 
