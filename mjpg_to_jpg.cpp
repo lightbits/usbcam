@@ -1,28 +1,30 @@
-// My laptop webcamera gives out MJPEG frames instead of JPEG frames
-// (which the ELP camera gives me). Apparently these would be good
-// JPEG frames, if it were not for them missing a "Huffman table".
-// Apparently it is possible to just squeeze in some 'default' table
-// and get a perfectly fine JPEG, so this program does just that:
-// take a MJPEG data, add a Huffman table segment to its header,
-// and spit it back out.
-
-// See https://en.wikipedia.org/wiki/JPEG#JPEG_files for the JPEG
-// format, and run
-//   $ xxd file.jpg | less
-// on some MJPEG file and try to relate the binary data with the
-// wiki spec. Specifically, look for the ff** markers, starting with ffd8.
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-// You allocate jpg. You can get the size of the resulting
-// JPG by passing NULL for 'jpg', in which case no processing
-// is done, and only the size is computed and returned. I do
-// not handle 'mjpg' inputs that do not have the Start of Frame
-// marker (0xffc0).
+// Create a valid JPG frame from a MJPG (motion JPG) frame by
+// appending a default Huffman table to its header.
+// USAGE
+//   You allocate jpg with atleast mjpg_size + sizeof(huffman).
+//   You can get just this value by passing NULL for 'jpg'.
+//   The MJPG must have a Start of Frame marker (0xffc0).
+// NOTES
+//   Some cameras only support the MJPG format (V4L2_PIX_FMT_MJPEG)
+// and not JPG format (V4L2_PIX_FMT_JPEG). Some cameras decide to
+// output valid JPG frames anyway, while others, such as my webcam,
+// decide to output nearly valid JPGs. Apparently, these would be
+// valid JPGs if it were not for a missing Huffman table. Luckily,
+// it is possible to just squeeze in some default table and get a
+// perfectly fine JPG that way.
 unsigned int mjpg_to_jpg(unsigned char *mjpg, unsigned int mjpg_size, unsigned char *jpg)
 {
+    // To understand how this works I suggest you run
+    //   $ xxd <file> | less
+    // on one of your MJPG images, and try to relate the binary data with
+    // the JPEG specification on wikipedia (en.wikipedia.org/wiki/JPEG#JPEG_files).
+    // Specifically, look for the ff** markers, starting with ffd8.
+    // Then compare that with a JPG image.
+
     static unsigned char huffman[] =
     {
         // JPEG magic
@@ -70,6 +72,7 @@ unsigned int mjpg_to_jpg(unsigned char *mjpg, unsigned int mjpg_size, unsigned c
     while ((i+1) < mjpg_size && !(mjpg[i] == 0xff && mjpg[i+1] == 0xc0))
         i++;
 
+    // and squeeze huffman table inbetween
     memcpy(jpg,                   mjpg,    i);
     memcpy(jpg+i,                 huffman, sizeof(huffman));
     memcpy(jpg+i+sizeof(huffman), mjpg+i,  mjpg_size-i);
