@@ -2,6 +2,7 @@
 // github.com/lightbits
 //
 // Changelog
+// (6) Don't preserve decompressor instance in usbcam_jpeg_to_rgb (thread-safety)
 // (5) Automatically unlock previous frame on usbcam_lock if user forgot (and warn)
 // (4) Buffer count is unsigned
 // (3) JPEG-RGB decompressor returns true/false instead of crashing
@@ -307,7 +308,7 @@ void usbcam_lock(unsigned char **data, unsigned int *size, timeval *timestamp)
 
 bool usbcam_jpeg_to_rgb(int desired_width, int desired_height, unsigned char *destination, unsigned char *jpg_data, unsigned int jpg_size)
 {
-    static tjhandle decompressor = tjInitDecompress();
+    tjhandle decompressor = tjInitDecompress();
     int subsamp,width,height,error;
 
     error = tjDecompressHeader2(decompressor,
@@ -320,6 +321,7 @@ bool usbcam_jpeg_to_rgb(int desired_width, int desired_height, unsigned char *de
     if (error)
     {
         usbcam_warn("Failed to decode JPEG: %s", tjGetErrorStr());
+        tjDestroy(decompressor);
         return false;
     }
 
@@ -336,8 +338,10 @@ bool usbcam_jpeg_to_rgb(int desired_width, int desired_height, unsigned char *de
     if (error)
     {
         usbcam_warn("Failed to decode JPEG: %s", tjGetErrorStr());
+        tjDestroy(decompressor);
         return false;
     }
 
+    tjDestroy(decompressor);
     return true;
 }
